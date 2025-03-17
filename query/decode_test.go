@@ -2,8 +2,6 @@ package query
 
 import (
 	"math"
-	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"testing"
@@ -58,8 +56,8 @@ type customStruct struct {
 	Int int
 }
 
-func (s *customStruct) ParseQuery(q url.Values) error {
-	i, err := strconv.Atoi(q.Get("int"))
+func (s *customStruct) DecodeQuery(q url.Values) error {
+	i, err := strconv.Atoi(q.Get("custom"))
 	s.Int = i
 	return err
 }
@@ -114,7 +112,14 @@ type slicesDefaultedStruct struct {
 	Uint8s   []uint8   `default:"12,42"`
 }
 
-func TestParse(t *testing.T) {
+type customDecoderType string
+
+func (s *customDecoderType) DecodeQuery(_ url.Values) error {
+	*s = "called"
+	return nil
+}
+
+func TestDecode(t *testing.T) {
 	tests := []struct {
 		name        string
 		query       url.Values
@@ -239,7 +244,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "custom parse logic success",
 			query: map[string][]string{
-				"int": {"42"},
+				"custom": {"42"},
 			},
 			obj: &customStruct{},
 			expectedObj: &customStruct{
@@ -249,7 +254,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "custom parse logic fails",
 			query: map[string][]string{
-				"int": {"invalid"},
+				"custom": {"invalid"},
 			},
 			obj:         &customStruct{},
 			expectedErr: true,
@@ -257,7 +262,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "custom struct field",
 			query: map[string][]string{
-				"int": {"42"},
+				"custom": {"42"},
 			},
 			obj: &customStructFieldStruct{},
 			expectedObj: &customStructFieldStruct{
@@ -269,7 +274,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "custom struct field fails",
 			query: map[string][]string{
-				"int": {"invalid"},
+				"custom": {"invalid"},
 			},
 			obj:         &customStructFieldStruct{},
 			expectedErr: true,
@@ -277,7 +282,7 @@ func TestParse(t *testing.T) {
 		{
 			name: "custom struct field as pointer",
 			query: map[string][]string{
-				"int": {"42"},
+				"custom": {"42"},
 			},
 			obj: &pointedCustomStructFieldStruct{},
 			expectedObj: &pointedCustomStructFieldStruct{
@@ -573,11 +578,17 @@ func TestParse(t *testing.T) {
 			obj:         &slicesStruct{},
 			expectedErr: true,
 		},
+		{
+			name:        "custom type with Decode interface",
+			query:       map[string][]string{},
+			obj:         toPointer(customDecoderType("")),
+			expectedObj: toPointer(customDecoderType("called")),
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := Parse(tt.query, tt.obj)
+			err := Decode(tt.query, tt.obj)
 
 			if tt.expectedErr {
 				assert.Error(t, err)
@@ -587,31 +598,6 @@ func TestParse(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestParseRequest(t *testing.T) {
-	t.Run("sample http request", func(t *testing.T) {
-		uri, _ := url.Parse("/")
-		q := uri.Query()
-		q.Set("int", "42")
-		uri.RawQuery = q.Encode()
-		var test testStruct
-
-		err := ParseRequest(httptest.NewRequest(http.MethodGet, uri.String(), nil), &test)
-
-		assert.NoError(t, err)
-		assert.Equal(t, &test, &testStruct{
-			Int: 42,
-		})
-	})
-
-	t.Run("nil http request", func(t *testing.T) {
-		var test testStruct
-
-		err := ParseRequest(nil, &test)
-
-		assert.Error(t, err)
-	})
 }
 
 func toPointer[T any](v T) *T {

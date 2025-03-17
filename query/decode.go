@@ -2,59 +2,50 @@ package query
 
 import (
 	"errors"
-	"net/http"
+	"fmt"
 	"net/url"
 	"reflect"
 	"strconv"
-	"strings"
-	"unicode"
 )
 
-const (
-	TagName    = "query"
-	TagDefault = "default"
-)
-
-// Parser custom parsing logic for structs. Can be implemented on
-// self created structs to deviate the default logic.
-type Parser interface {
-	// ParseQuery parse given url.Values query values and set it to the
-	// implementing struct.
-	ParseQuery(q url.Values) error
+// Decoder custom parsing logic for structs. Can be implemented on
+// structs to deviate from the default logic.
+type Decoder interface {
+	// DecodeQuery parses the given url.Values query values and set it
+	// to the implementing struct.
+	DecodeQuery(q url.Values) error
 }
 
-// Parse parses the URL query parameters given in the ur.Values to the
+// Decode parses the URL query parameters given in the ur.Values to the
 // object passed using the name of the fields or the optional overwrite
 // with the TagName. Default values can be provided via the TagDefault
 // tag.
-func Parse(q url.Values, obj any) error {
+func Decode(q url.Values, obj any) error {
 	if q == nil {
 		return nil
 	}
 
-	return parse(q, obj)
+	return parse(q, reflect.ValueOf(obj))
 }
 
-// ParseRequest uses the url of the given request for Parse.
-func ParseRequest(r *http.Request, obj any) error {
-	if r == nil {
-		return errors.New("nil Request")
+func parse(q url.Values, val reflect.Value) error {
+	// check for custom types
+	if custom, err := decodeCustom(q, val); custom {
+		return err
 	}
 
-	return Parse(r.URL.Query(), obj)
+	kind := val.Kind()
+	switch kind {
+	case reflect.Ptr:
+		return parse(q, val.Elem())
+	case reflect.Struct:
+		return parseStruct(q, val)
+	default:
+		return fmt.Errorf("unsupported type: %s", kind)
+	}
 }
 
-func parse(q url.Values, obj any) error {
-	if p, ok := obj.(Parser); ok {
-		return p.ParseQuery(q)
-	}
-
-	val := reflect.ValueOf(obj)
-	if val.Kind() != reflect.Ptr {
-		return errors.New("obj must be a pointer to a struct")
-	}
-
-	val = val.Elem()
+func parseStruct(q url.Values, val reflect.Value) error {
 	typ := val.Type()
 
 	var errs []error
@@ -70,58 +61,42 @@ func parse(q url.Values, obj any) error {
 			continue
 		}
 
-		values, ok := getValues(&fieldType, q)
-		if !ok {
+		// check if custom decoder and run it
+		if custom, err := decodeCustom(q, field); custom {
+			if err != nil {
+				errs = append(errs, err)
+			}
+			continue
+		}
+
+		values := getValues(q, &fieldType)
+		if len(values) == 0 {
 			continue // skip empty values
 		}
 
-		err := parseField(&field, q, values)
-		if err != nil {
-			errs = append(errs, err)
+		fieldErr := parseField(q, field, values)
+		if fieldErr != nil {
+			errs = append(errs, fieldErr)
 		}
 	}
 
 	return errors.Join(errs...)
 }
 
-func getValues(field *reflect.StructField, q url.Values) ([]string, bool) {
-	if field.Type.Kind() == reflect.Struct ||
-		(field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct) {
-		return nil, true // for custom structs ignore the values
+func getValues(q url.Values, field *reflect.StructField) []string {
+	values := q[getName(field)]
+	if len(values) == 0 {
+		values = getDefaultTags(field)
 	}
 
-	values, ok := q[getName(field)]
-	if !ok || len(values) == 0 {
-		values = getDefaultValues(field)
-		if len(values) == 0 {
-			return nil, false
-		}
-	}
-
-	return values, true
+	return values
 }
 
 func getName(field *reflect.StructField) string {
-	name, ok := field.Tag.Lookup(TagName)
-	if !ok {
-		fieldName := []rune(field.Name)
-		fieldName[0] = unicode.ToLower(fieldName[0])
-		name = string(fieldName)
-	}
-
-	return name
+	return getNameTags(field)[0]
 }
 
-func getDefaultValues(field *reflect.StructField) []string {
-	value, ok := field.Tag.Lookup(TagDefault)
-	if !ok {
-		return nil
-	}
-
-	return strings.Split(value, ",")
-}
-
-func parseField(field *reflect.Value, q url.Values, values []string) error {
+func parseField(q url.Values, field reflect.Value, values []string) error {
 	typ := field.Type()
 
 	switch typ.Kind() {
@@ -197,14 +172,11 @@ func parseField(field *reflect.Value, q url.Values, values []string) error {
 		return parseSlice(field, values)
 	case reflect.Ptr:
 		created := reflect.New(typ.Elem())
-		elem := created.Elem()
-		err := parseField(&elem, q, values)
+		err := parseField(q, created.Elem(), values)
 		if err != nil {
 			return err
 		}
 		field.Set(created)
-	case reflect.Struct:
-		return parseStruct(field, q)
 	default:
 		// ignore other types
 	}
@@ -212,7 +184,7 @@ func parseField(field *reflect.Value, q url.Values, values []string) error {
 	return nil
 }
 
-func parseSlice(field *reflect.Value, values []string) error {
+func parseSlice(field reflect.Value, values []string) error {
 	n := len(values)
 
 	switch field.Type().Elem().Kind() {
@@ -355,24 +327,25 @@ func parseSlice(field *reflect.Value, values []string) error {
 	return nil
 }
 
-func parseStruct(field *reflect.Value, q url.Values) error {
-	ptrReceiver := field.Addr()
-	typ := ptrReceiver.Type()
+var decoderType = reflect.TypeOf(new(Decoder)).Elem()
 
-	if !typ.Implements(reflect.TypeOf((*Parser)(nil)).Elem()) {
-		return nil // ignore structs that do not implement Parser interface
+func decodeCustom(q url.Values, val reflect.Value) (bool, error) {
+	typ := val.Type()
+
+	if !typ.Implements(decoderType) {
+		if val.CanAddr() && val.Addr().Type().Implements(decoderType) {
+			val = val.Addr()
+		} else {
+			return false, nil // ignore types that do not implement Decoder interface
+		}
 	}
 
-	method, ok := typ.MethodByName("ParseQuery")
-	if !ok {
-		return errors.New("method ParseQuery not found")
+	if !reflect.Indirect(val).IsValid() {
+		created := reflect.New(typ.Elem())
+		val.Set(created)
+		val = created
 	}
 
-	returns := method.Func.Call([]reflect.Value{ptrReceiver, reflect.ValueOf(q)})
-	if len(returns) == 0 {
-		return errors.New("calling method ParseQuery did not return anything")
-	}
-
-	err, _ := returns[0].Interface().(error)
-	return err
+	m := val.Interface().(Decoder)
+	return true, m.DecodeQuery(q)
 }
