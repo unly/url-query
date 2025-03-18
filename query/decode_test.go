@@ -119,6 +119,22 @@ func (s *customDecoderType) DecodeQuery(_ url.Values) error {
 	return nil
 }
 
+type customValueStruct struct {
+	Int int
+}
+
+func (s customValueStruct) DecodeQuery(_ url.Values) error {
+	return assert.AnError
+}
+
+type fieldCustomValueType struct {
+	Custom customValueStruct
+}
+
+type pointerCustomValueType struct {
+	Custom *customValueStruct
+}
+
 func TestDecode(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -136,6 +152,18 @@ func TestDecode(t *testing.T) {
 			name:        "no object",
 			query:       url.Values{},
 			obj:         42,
+			expectedErr: true,
+		},
+		{
+			name:        "nil",
+			query:       url.Values{},
+			obj:         nil,
+			expectedErr: true,
+		},
+		{
+			name:        "pointer to string",
+			query:       url.Values{},
+			obj:         toPointer("hello world"),
 			expectedErr: true,
 		},
 		{
@@ -583,6 +611,30 @@ func TestDecode(t *testing.T) {
 			query:       map[string][]string{},
 			obj:         toPointer(customDecoderType("")),
 			expectedObj: toPointer(customDecoderType("called")),
+		},
+		{
+			name: "value receiver cannot decode",
+			query: map[string][]string{
+				"custom": {"42"},
+			},
+			obj:         &customValueStruct{},
+			expectedErr: true,
+		},
+		{
+			name: "value receiver as field cannot decode",
+			query: map[string][]string{
+				"custom": {"42"},
+			},
+			obj:         &fieldCustomValueType{},
+			expectedErr: true,
+		},
+		{
+			name: "value receiver as field pointer cannot decode",
+			query: map[string][]string{
+				"custom": {"42"},
+			},
+			obj:         &pointerCustomValueType{},
+			expectedErr: true,
 		},
 	}
 

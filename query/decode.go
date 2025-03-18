@@ -29,15 +29,18 @@ func Decode(q url.Values, obj any) error {
 }
 
 func parse(q url.Values, val reflect.Value) error {
+	if val.Kind() != reflect.Pointer || val.IsNil() {
+		return errors.New("obj must be a non-nil pointer")
+	}
+
 	// check for custom types
 	if custom, err := decodeCustom(q, val); custom {
 		return err
 	}
 
+	val = val.Elem()
 	kind := val.Kind()
 	switch kind {
-	case reflect.Ptr:
-		return parse(q, val.Elem())
 	case reflect.Struct:
 		return parseStruct(q, val)
 	default:
@@ -254,7 +257,7 @@ func decodeCustom(q url.Values, val reflect.Value) (bool, error) {
 	typ := val.Type()
 
 	if !typ.Implements(decoderType) {
-		if val.CanAddr() && val.Addr().Type().Implements(decoderType) {
+		if reflect.PointerTo(typ).Implements(decoderType) && val.CanAddr() {
 			val = val.Addr()
 		} else {
 			return false, nil // ignore types that do not implement Decoder interface
