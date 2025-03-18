@@ -102,228 +102,149 @@ func parseField(q url.Values, field reflect.Value, values []string) error {
 	switch typ.Kind() {
 	case reflect.String:
 		field.SetString(values[0])
+		return nil
 	case reflect.Bool:
-		b, err := strconv.ParseBool(values[0])
-		if err != nil {
-			return err
-		}
-		field.SetBool(b)
+		return setField(strconv.ParseBool, field.SetBool, values[0])
 	case reflect.Float64:
-		f, err := strconv.ParseFloat(values[0], 64)
-		if err != nil {
-			return err
-		}
-		field.SetFloat(f)
+		return setField(parseFloat64, field.SetFloat, values[0])
 	case reflect.Float32:
-		f, err := strconv.ParseFloat(values[0], 32)
-		if err != nil {
-			return err
-		}
-		field.SetFloat(f)
+		return setField(parseFloat32, field.SetFloat, values[0])
 	case reflect.Int, reflect.Int64:
-		v, err := strconv.ParseInt(values[0], 10, 64)
-		if err != nil {
-			return err
-		}
-		field.SetInt(v)
+		return setField(parseInt64, field.SetInt, values[0])
 	case reflect.Int32:
-		v, err := strconv.ParseInt(values[0], 10, 32)
-		if err != nil {
-			return err
-		}
-		field.SetInt(v)
+		return setField(parseInt32, field.SetInt, values[0])
 	case reflect.Int16:
-		v, err := strconv.ParseInt(values[0], 10, 16)
-		if err != nil {
-			return err
-		}
-		field.SetInt(v)
+		return setField(parseInt16, field.SetInt, values[0])
 	case reflect.Int8:
-		v, err := strconv.ParseInt(values[0], 10, 8)
-		if err != nil {
-			return err
-		}
-		field.SetInt(v)
+		return setField(parseInt8, field.SetInt, values[0])
 	case reflect.Uint, reflect.Uint64:
-		v, err := strconv.ParseUint(values[0], 10, 64)
-		if err != nil {
-			return err
-		}
-		field.SetUint(v)
+		return setField(parseUint64, field.SetUint, values[0])
 	case reflect.Uint32:
-		v, err := strconv.ParseUint(values[0], 10, 32)
-		if err != nil {
-			return err
-		}
-		field.SetUint(v)
+		return setField(parseUint32, field.SetUint, values[0])
 	case reflect.Uint16:
-		v, err := strconv.ParseUint(values[0], 10, 16)
-		if err != nil {
-			return err
-		}
-		field.SetUint(v)
+		return setField(parseUint16, field.SetUint, values[0])
 	case reflect.Uint8:
-		v, err := strconv.ParseUint(values[0], 10, 8)
-		if err != nil {
-			return err
-		}
-		field.SetUint(v)
+		return setField(parseUint8, field.SetUint, values[0])
 	case reflect.Slice:
 		return parseSlice(field, values)
 	case reflect.Ptr:
 		created := reflect.New(typ.Elem())
-		err := parseField(q, created.Elem(), values)
-		if err != nil {
-			return err
-		}
 		field.Set(created)
+		return parseField(q, created.Elem(), values)
 	default:
 		// ignore other types
+		return nil
 	}
-
-	return nil
 }
 
 func parseSlice(field reflect.Value, values []string) error {
-	n := len(values)
-
 	switch field.Type().Elem().Kind() {
 	case reflect.String:
 		field.Set(reflect.ValueOf(values))
+		return nil
 	case reflect.Bool:
-		parsed := make([]bool, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseBool(values[i])
-			if err != nil {
-				return err
-			}
-			parsed[i] = v
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[bool](strconv.ParseBool, field, values)
 	case reflect.Float64:
-		parsed := make([]float64, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseFloat(values[i], 64)
-			if err != nil {
-				return err
-			}
-			parsed[i] = v
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[float64](parseFloat64, field, values)
 	case reflect.Float32:
-		parsed := make([]float32, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseFloat(values[i], 32)
-			if err != nil {
-				return err
-			}
-			parsed[i] = float32(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[float32](parseFloat32, field, values)
 	case reflect.Int:
-		parsed := make([]int, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.Atoi(values[i])
-			if err != nil {
-				return err
-			}
-			parsed[i] = v
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[int](strconv.Atoi, field, values)
 	case reflect.Int64:
-		parsed := make([]int64, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseInt(values[i], 10, 64)
-			if err != nil {
-				return err
-			}
-			parsed[i] = v
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[int64](parseInt64, field, values)
 	case reflect.Int32:
-		parsed := make([]int32, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseInt(values[i], 10, 32)
-			if err != nil {
-				return err
-			}
-			parsed[i] = int32(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[int32](parseInt32, field, values)
 	case reflect.Int16:
-		parsed := make([]int16, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseInt(values[i], 10, 16)
-			if err != nil {
-				return err
-			}
-			parsed[i] = int16(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[int16](parseInt16, field, values)
 	case reflect.Int8:
-		parsed := make([]int8, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseInt(values[i], 10, 8)
-			if err != nil {
-				return err
-			}
-			parsed[i] = int8(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[int8](parseInt8, field, values)
 	case reflect.Uint:
-		parsed := make([]uint, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseUint(values[i], 10, 64)
-			if err != nil {
-				return err
-			}
-			parsed[i] = uint(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[uint](parseUint, field, values)
 	case reflect.Uint64:
-		parsed := make([]uint64, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseUint(values[i], 10, 64)
-			if err != nil {
-				return err
-			}
-			parsed[i] = v
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[uint64](parseUint64, field, values)
 	case reflect.Uint32:
-		parsed := make([]uint32, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseUint(values[i], 10, 32)
-			if err != nil {
-				return err
-			}
-			parsed[i] = uint32(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[uint32](parseUint32, field, values)
 	case reflect.Uint16:
-		parsed := make([]uint16, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseUint(values[i], 10, 16)
-			if err != nil {
-				return err
-			}
-			parsed[i] = uint16(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[uint16](parseUint16, field, values)
 	case reflect.Uint8:
-		parsed := make([]uint8, n)
-		for i := 0; i < n; i++ {
-			v, err := strconv.ParseUint(values[i], 10, 8)
-			if err != nil {
-				return err
-			}
-			parsed[i] = uint8(v)
-		}
-		field.Set(reflect.ValueOf(parsed))
+		return setSlice[uint8](parseUint8, field, values)
 	default:
 		// ignore other types
+		return nil
+	}
+}
+
+func parseFloat64(s string) (float64, error) {
+	return strconv.ParseFloat(s, 64)
+}
+
+func parseFloat32(s string) (float64, error) {
+	return strconv.ParseFloat(s, 32)
+}
+
+func parseInt64(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 64)
+}
+
+func parseInt32(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 32)
+}
+
+func parseInt16(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 16)
+}
+
+func parseInt8(s string) (int64, error) {
+	return strconv.ParseInt(s, 10, 8)
+}
+
+func parseUint(s string) (uint, error) {
+	v, err := parseUint64(s)
+	return uint(v), err
+}
+
+func parseUint64(s string) (uint64, error) {
+	return strconv.ParseUint(s, 10, 64)
+}
+
+func parseUint32(s string) (uint64, error) {
+	return strconv.ParseUint(s, 10, 32)
+}
+
+func parseUint16(s string) (uint64, error) {
+	return strconv.ParseUint(s, 10, 16)
+}
+
+func parseUint8(s string) (uint64, error) {
+	return strconv.ParseUint(s, 10, 8)
+}
+
+func setField[T any](fn func(s string) (T, error), set func(T), value string) error {
+	v, err := fn(value)
+	if err != nil {
+		return err
 	}
 
+	set(v)
+	return nil
+}
+
+func setSlice[T, V any](fn func(s string) (V, error), field reflect.Value, values []string) error {
+	n := len(values)
+	parsed := make([]T, n)
+	var t T
+	tType := reflect.TypeOf(t)
+
+	for i := 0; i < n; i++ {
+		v, err := fn(values[i])
+		if err != nil {
+			return err
+		}
+
+		parsed[i] = reflect.ValueOf(v).Convert(tType).Interface().(T)
+	}
+
+	field.Set(reflect.ValueOf(parsed))
 	return nil
 }
 
