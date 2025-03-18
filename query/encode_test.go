@@ -69,6 +69,24 @@ func TestEncode(t *testing.T) {
 			},
 		},
 		{
+			name: "pointer to sample objects",
+			obj: &stringStruct{
+				String: "hello world",
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"string": {"hello world"},
+			},
+		},
+		{
+			name:          "invalid type",
+			obj:           42,
+			errorExpected: true,
+			values: map[string][]string{
+				"string": {"hello world"},
+			},
+		},
+		{
 			name: "custom encoder",
 			obj: customEncoderStruct{
 				String: "hello world",
