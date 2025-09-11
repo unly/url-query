@@ -30,7 +30,9 @@ func encode(v url.Values, val reflect.Value) error {
 	}
 
 	switch val.Kind() {
-	case reflect.Ptr:
+	case reflect.Invalid:
+		return nil
+	case reflect.Pointer:
 		return encode(v, val.Elem())
 	case reflect.Struct:
 		return encodeStruct(v, val)
@@ -51,12 +53,15 @@ func encodeStruct(v url.Values, val reflect.Value) error {
 			continue
 		}
 
-		if custom, err := encodeCustom(v, field); custom {
-			return err
-		}
-
 		key, skip := getEncodingName(&fieldType, field)
 		if skip {
+			continue
+		}
+
+		if custom, err := encodeCustom(v, field); custom {
+			if err != nil {
+				return err
+			}
 			continue
 		}
 
@@ -80,7 +85,7 @@ func encodeField(v url.Values, field reflect.Value, key string) {
 		v.Add(key, encodeInt(field))
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		v.Add(key, encodeUint(field))
-	case reflect.Ptr:
+	case reflect.Pointer:
 		encodeField(v, field.Elem(), key)
 	case reflect.Slice:
 		encodeSlice(v, field, key)
@@ -155,6 +160,10 @@ func getEncodingName(field *reflect.StructField, val reflect.Value) (string, boo
 var encoderType = reflect.TypeOf(new(Encoder)).Elem()
 
 func encodeCustom(v url.Values, val reflect.Value) (bool, error) {
+	if !val.IsValid() {
+		return false, nil
+	}
+
 	typ := val.Type()
 
 	if !typ.Implements(encoderType) {
@@ -165,6 +174,10 @@ func encodeCustom(v url.Values, val reflect.Value) (bool, error) {
 		} else {
 			return false, nil // ignore types that do not implement Encoder interface
 		}
+	}
+
+	if val.Kind() == reflect.Pointer && val.Elem().Kind() == reflect.Invalid {
+		return true, nil
 	}
 
 	m := val.Interface().(Encoder)

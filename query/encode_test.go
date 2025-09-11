@@ -47,6 +47,10 @@ type nestedPointerCustomValueEncoderStruct struct {
 	Custom *customValueEncoderStruct
 }
 
+type pointerFieldStruct struct {
+	String *string
+}
+
 type ignoreStruct struct {
 	String string `query:"-"`
 }
@@ -291,6 +295,41 @@ func TestEncode(t *testing.T) {
 			obj: ignoreStruct{
 				String: "hello world",
 			},
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name:          "nil",
+			obj:           nil,
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name:          "nil pointer",
+			obj:           (*testing.T)(nil),
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name:          "nil pointer custom field in struct",
+			obj:           nestedPointerCustomEncoderStruct{},
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name: "pointer to field",
+			obj: pointerFieldStruct{
+				String: toPointer("sample"),
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"string": {"sample"},
+			},
+		},
+
+		{
+			name:          "nil pointer field in struct",
+			obj:           pointerFieldStruct{},
 			errorExpected: false,
 			values:        map[string][]string{},
 		},

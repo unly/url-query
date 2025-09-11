@@ -21,10 +21,6 @@ type Decoder interface {
 // with the TagName. Default values can be provided via the TagDefault
 // tag.
 func Decode(q url.Values, obj any) error {
-	if q == nil {
-		return nil
-	}
-
 	return parse(q, reflect.ValueOf(obj))
 }
 
@@ -130,7 +126,7 @@ func parseField(q url.Values, field reflect.Value, values []string) error {
 		return setField(parseUint8, field.SetUint, values[0])
 	case reflect.Slice:
 		return parseSlice(field, values)
-	case reflect.Ptr:
+	case reflect.Pointer:
 		created := reflect.New(typ.Elem())
 		field.Set(created)
 		return parseField(q, created.Elem(), values)
@@ -146,31 +142,31 @@ func parseSlice(field reflect.Value, values []string) error {
 		field.Set(reflect.ValueOf(values))
 		return nil
 	case reflect.Bool:
-		return setSlice[bool](strconv.ParseBool, field, values)
+		return setSlice(strconv.ParseBool, field, values)
 	case reflect.Float64:
-		return setSlice[float64](parseFloat64, field, values)
+		return setSlice(parseFloat64, field, values)
 	case reflect.Float32:
-		return setSlice[float32](parseFloat32, field, values)
+		return setSlice(parseFloat32, field, values)
 	case reflect.Int:
-		return setSlice[int](strconv.Atoi, field, values)
+		return setSlice(strconv.Atoi, field, values)
 	case reflect.Int64:
-		return setSlice[int64](parseInt64, field, values)
+		return setSlice(parseInt64, field, values)
 	case reflect.Int32:
-		return setSlice[int32](parseInt32, field, values)
+		return setSlice(parseInt32, field, values)
 	case reflect.Int16:
-		return setSlice[int16](parseInt16, field, values)
+		return setSlice(parseInt16, field, values)
 	case reflect.Int8:
-		return setSlice[int8](parseInt8, field, values)
+		return setSlice(parseInt8, field, values)
 	case reflect.Uint:
-		return setSlice[uint](parseUint, field, values)
+		return setSlice(parseUint, field, values)
 	case reflect.Uint64:
-		return setSlice[uint64](parseUint64, field, values)
+		return setSlice(parseUint64, field, values)
 	case reflect.Uint32:
-		return setSlice[uint32](parseUint32, field, values)
+		return setSlice(parseUint32, field, values)
 	case reflect.Uint16:
-		return setSlice[uint16](parseUint16, field, values)
+		return setSlice(parseUint16, field, values)
 	case reflect.Uint8:
-		return setSlice[uint8](parseUint8, field, values)
+		return setSlice(parseUint8, field, values)
 	default:
 		// ignore other types
 		return nil
@@ -232,11 +228,10 @@ func setField[T any](fn func(s string) (T, error), set func(T), value string) er
 	return nil
 }
 
-func setSlice[T, V any](fn func(s string) (V, error), field reflect.Value, values []string) error {
+func setSlice[T any](fn func(s string) (T, error), field reflect.Value, values []string) error {
 	n := len(values)
-	parsed := make([]T, n)
-	var t T
-	tType := reflect.TypeOf(t)
+	elemType := field.Type().Elem()
+	sliceVal := reflect.MakeSlice(field.Type(), n, n)
 
 	for i := 0; i < n; i++ {
 		v, err := fn(values[i])
@@ -244,16 +239,24 @@ func setSlice[T, V any](fn func(s string) (V, error), field reflect.Value, value
 			return err
 		}
 
-		parsed[i] = reflect.ValueOf(v).Convert(tType).Interface().(T)
+		rv := reflect.ValueOf(v)
+		if !rv.Type().AssignableTo(elemType) {
+			rv = rv.Convert(elemType)
+		}
+		sliceVal.Index(i).Set(rv)
 	}
 
-	field.Set(reflect.ValueOf(parsed))
+	field.Set(sliceVal)
 	return nil
 }
 
 var decoderType = reflect.TypeOf(new(Decoder)).Elem()
 
 func decodeCustom(q url.Values, val reflect.Value) (bool, error) {
+	if !val.IsValid() {
+		return false, nil
+	}
+
 	typ := val.Type()
 
 	if !typ.Implements(decoderType) {
