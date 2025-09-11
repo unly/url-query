@@ -161,6 +161,18 @@ func TestDecode(t *testing.T) {
 			expectedErr: true,
 		},
 		{
+			name:        "nil pointer to struct",
+			query:       url.Values{},
+			obj:         (*testing.T)(nil),
+			expectedErr: true,
+		},
+		{
+			name:        "nil pointer to custom struct",
+			query:       url.Values{},
+			obj:         (*customDecoderType)(nil),
+			expectedErr: true,
+		},
+		{
 			name:        "pointer to string",
 			query:       url.Values{},
 			obj:         toPointer("hello world"),
