@@ -55,6 +55,10 @@ type ignoreStruct struct {
 	String string `query:"-"`
 }
 
+type omitemptyNoNameStruct struct {
+	Field int `query:",omitempty"`
+}
+
 func TestEncode(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -287,6 +291,20 @@ func TestEncode(t *testing.T) {
 		{
 			name:          "omit empty field",
 			obj:           stringStruct{},
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name:          "omitempty without name uses field name",
+			obj:           omitemptyNoNameStruct{Field: 1},
+			errorExpected: false,
+			values: map[string][]string{
+				"field": {"1"},
+			},
+		},
+		{
+			name:          "omitempty without name omits zero value",
+			obj:           omitemptyNoNameStruct{},
 			errorExpected: false,
 			values:        map[string][]string{},
 		},
