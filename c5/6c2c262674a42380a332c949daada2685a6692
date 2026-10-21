@@ -1,0 +1,19 @@
+go.mod
+  s_40535086ba4c1d::t_f81b261b13f574 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c56c2c262674a42380a332c949daada2685a6692",
+  "prompts": {},
+  "sessions": {
+    "s_40535086ba4c1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d98586f3-9dcd-4710-b5f8-823ae5157ce8",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "unly <leon.graser@deliveryhero.com>"
+    }
+  }
+}
