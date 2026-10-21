@@ -3,6 +3,7 @@ package query
 import (
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -57,6 +58,37 @@ type ignoreStruct struct {
 
 type omitemptyNoNameStruct struct {
 	Field int `query:",omitempty"`
+}
+
+type interfaceEncoderFieldStruct struct {
+	Encoder Encoder
+}
+
+func (l level) MarshalText() ([]byte, error) {
+	switch l {
+	case levelLow:
+		return []byte("low"), nil
+	case levelHigh:
+		return []byte("high"), nil
+	default:
+		return nil, assert.AnError
+	}
+}
+
+type pointerTextMarshaler struct {
+	Value string
+}
+
+func (p *pointerTextMarshaler) MarshalText() ([]byte, error) {
+	return []byte("text:" + p.Value), nil
+}
+
+type pointerTextMarshalerStruct struct {
+	Text pointerTextMarshaler
+}
+
+type timeOmitemptyStruct struct {
+	Time time.Time `query:"time,omitempty"`
 }
 
 func TestEncode(t *testing.T) {
@@ -350,6 +382,116 @@ func TestEncode(t *testing.T) {
 			obj:           pointerFieldStruct{},
 			errorExpected: false,
 			values:        map[string][]string{},
+		},
+		{
+			name:          "nil interface field in struct",
+			obj:           interfaceEncoderFieldStruct{},
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name: "interface field with custom encoder",
+			obj: interfaceEncoderFieldStruct{
+				Encoder: &customEncoderStruct{
+					String: "hello world",
+				},
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"custom": {"hello world"},
+			},
+		},
+		{
+			name: "text marshaler",
+			obj: timeStruct{
+				Time:    testTime,
+				Pointer: toPointer(testTime),
+				Times:   []time.Time{testTime, otherTestTime},
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"time":    {"2024-01-02T03:04:05Z"},
+				"pointer": {"2024-01-02T03:04:05Z"},
+				"times":   {"2024-01-02T03:04:05Z", "2025-06-07T08:09:10Z"},
+			},
+		},
+		{
+			name: "text marshaler skips nil pointer and empty slice",
+			obj: timeStruct{
+				Time: testTime,
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"time": {"2024-01-02T03:04:05Z"},
+			},
+		},
+		{
+			name: "text marshaler takes precedence over kind",
+			obj: levelStruct{
+				Level:   levelHigh,
+				Pointer: toPointer(levelLow),
+				Levels:  []level{levelLow, levelHigh},
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"level":   {"high"},
+				"pointer": {"low"},
+				"levels":  {"low", "high"},
+			},
+		},
+		{
+			name: "text marshaler with pointer receiver",
+			obj: pointerTextMarshalerStruct{
+				Text: pointerTextMarshaler{Value: "hello"},
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"text": {"text:hello"},
+			},
+		},
+		{
+			name:          "text marshaler omitempty zero value",
+			obj:           timeOmitemptyStruct{},
+			errorExpected: false,
+			values:        map[string][]string{},
+		},
+		{
+			name: "text marshaler fails",
+			obj: levelStruct{
+				Level: level(42),
+			},
+			errorExpected: true,
+		},
+		{
+			name: "text marshaler fails for slice element",
+			obj: levelStruct{
+				Levels: []level{levelLow, level(42)},
+			},
+			errorExpected: true,
+		},
+		{
+			name: "duration",
+			obj: durationStruct{
+				Duration:  90 * time.Minute,
+				Pointer:   toPointer(time.Second),
+				Durations: []time.Duration{time.Second, 250 * time.Millisecond},
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"duration":  {"1h30m0s"},
+				"pointer":   {"1s"},
+				"durations": {"1s", "250ms"},
+			},
+		},
+		{
+			name: "duration skips nil pointer and empty slice",
+			obj: durationStruct{
+				Duration: time.Second,
+			},
+			errorExpected: false,
+			values: map[string][]string{
+				"duration": {"1s"},
+			},
 		},
 	}
 

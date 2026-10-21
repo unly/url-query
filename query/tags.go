@@ -37,5 +37,17 @@ func getDefaultTags(field *reflect.StructField) []string {
 		return nil
 	}
 
+	if !isSlice(field.Type) {
+		return []string{value}
+	}
+
 	return strings.Split(value, ",")
+}
+
+func isSlice(typ reflect.Type) bool {
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+
+	return typ.Kind() == reflect.Slice
 }
