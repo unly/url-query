@@ -1,10 +1,12 @@
 package query
 
 import (
+	"encoding"
 	"fmt"
 	"net/url"
 	"reflect"
 	"strconv"
+	"time"
 )
 
 // Encoder custom encoding logic for types to allow a logic. Returned
@@ -58,20 +60,37 @@ func encodeStruct(v url.Values, val reflect.Value) error {
 			continue
 		}
 
-		if custom, err := encodeCustom(v, field); custom {
+		custom, err := encodeCustom(v, field)
+		if custom {
 			if err != nil {
 				return err
 			}
 			continue
 		}
 
-		encodeField(v, field, key)
+		err = encodeField(v, field, key)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
 }
 
-func encodeField(v url.Values, field reflect.Value, key string) {
+func encodeField(v url.Values, field reflect.Value, key string) error {
+	if !field.IsValid() {
+		return nil
+	}
+
+	if ok, err := encodeText(v, key, field); ok {
+		return err
+	}
+
+	if field.Type() == durationType {
+		v.Add(key, encodeDuration(field))
+		return nil
+	}
+
 	switch field.Kind() {
 	case reflect.String:
 		v.Add(key, encodeString(field))
@@ -86,16 +105,28 @@ func encodeField(v url.Values, field reflect.Value, key string) {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		v.Add(key, encodeUint(field))
 	case reflect.Pointer:
-		encodeField(v, field.Elem(), key)
+		return encodeField(v, field.Elem(), key)
 	case reflect.Slice:
-		encodeSlice(v, field, key)
+		return encodeSlice(v, field, key)
 	default:
 		// ignore others
 	}
+
+	return nil
 }
 
-func encodeSlice(v url.Values, field reflect.Value, key string) {
-	switch field.Type().Elem().Kind() {
+func encodeSlice(v url.Values, field reflect.Value, key string) error {
+	elemType := field.Type().Elem()
+	if isTextMarshaler(elemType) {
+		return addTextSlice(v, field, key)
+	}
+
+	if elemType == durationType {
+		addSlice(v, field, key, encodeDuration)
+		return nil
+	}
+
+	switch elemType.Kind() {
 	case reflect.String:
 		addSlice(v, field, key, encodeString)
 	case reflect.Bool:
@@ -111,6 +142,19 @@ func encodeSlice(v url.Values, field reflect.Value, key string) {
 	default:
 		// ignore others
 	}
+
+	return nil
+}
+
+func addTextSlice(v url.Values, field reflect.Value, key string) error {
+	n := field.Len()
+	for i := 0; i < n; i++ {
+		if _, err := encodeText(v, key, field.Index(i)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func addSlice(v url.Values, field reflect.Value, key string, fn func(value reflect.Value) string) {
@@ -118,6 +162,10 @@ func addSlice(v url.Values, field reflect.Value, key string, fn func(value refle
 	for i := 0; i < n; i++ {
 		v.Add(key, fn(field.Index(i)))
 	}
+}
+
+func encodeDuration(val reflect.Value) string {
+	return time.Duration(val.Int()).String()
 }
 
 func encodeFloat64(val reflect.Value) string {
@@ -157,6 +205,46 @@ func getEncodingName(field *reflect.StructField, val reflect.Value) (string, boo
 	return names[0], false
 }
 
+var textMarshalerType = reflect.TypeOf(new(encoding.TextMarshaler)).Elem()
+
+func encodeText(v url.Values, key string, val reflect.Value) (bool, error) {
+	if !val.IsValid() {
+		return false, nil
+	}
+
+	typ := val.Type()
+
+	if !typ.Implements(textMarshalerType) {
+		if !reflect.PointerTo(typ).Implements(textMarshalerType) {
+			return false, nil
+		}
+
+		ptr := reflect.New(typ)
+		ptr.Elem().Set(val)
+		val = ptr
+	}
+
+	if (val.Kind() == reflect.Pointer || val.Kind() == reflect.Interface) && val.IsNil() {
+		return true, nil
+	}
+
+	text, err := val.Interface().(encoding.TextMarshaler).MarshalText()
+	if err != nil {
+		return true, err
+	}
+
+	v.Add(key, string(text))
+	return true, nil
+}
+
+func isTextMarshaler(typ reflect.Type) bool {
+	if typ.Kind() == reflect.Interface {
+		return false
+	}
+
+	return typ.Implements(textMarshalerType) || reflect.PointerTo(typ).Implements(textMarshalerType)
+}
+
 var encoderType = reflect.TypeOf(new(Encoder)).Elem()
 
 func encodeCustom(v url.Values, val reflect.Value) (bool, error) {
@@ -176,7 +264,7 @@ func encodeCustom(v url.Values, val reflect.Value) (bool, error) {
 		}
 	}
 
-	if val.Kind() == reflect.Pointer && val.Elem().Kind() == reflect.Invalid {
+	if (val.Kind() == reflect.Pointer || val.Kind() == reflect.Interface) && val.IsNil() {
 		return true, nil
 	}
 
